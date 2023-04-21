@@ -35,6 +35,7 @@
 // 17/04/2023:				RC5 + Moved wait_completion in vdu so that it only executes after graphical operations
 // 18/04/2023:					+ Minor tweaks to wait completion logic
 // 21/04/2023:        LB: Added support for large fonts and UTF-8.
+// 21/04/2023:        LB: fixed scrolling for screen height not multiple of font height.
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -1040,7 +1041,7 @@ void cursorDown() {
 			wait_shiftkey();
 		}
 	}
-	if(charY >= ch) {
+	if(charY + fh > ch) {
 		charY -= fh;
 		Canvas->scroll(0, -fh);
 	}
