@@ -2,6 +2,42 @@
 
 Part of the official Quark firmware for the Agon series of microcomputers
 
+Modifications by Lennart Benschop to add a UTF-8 font with Latin, Greek,
+Cyrillic and more.
+
+New command added
+`VDU 23, 26, fontid, size, width, height`
+The size, width and height commands are ignored. fontid:
+* 0 standard 8x8 BBC font, user-modifiable, one byte to select each character
+  between 32 and 126, between 128 and 255.
+* 1 standard 8x8 BBC font as above, but use 2 byte UTF-8 encoding to select
+  characters above 127.
+* 2 Unicode 8x16 font, fixed in flash, one byte to select each character,
+  only characters lower than 256 are available (ISO Latin1 set).
+* 3 Unicode 8x16 font, fixed in flash, all 1356 characters are available,
+  select with 1, 2 or 3 byte UTF-8 sequences. This contains Latin (including
+  accented letters for all European languages), Greek, Cyrillic, math symbols,
+  box drawing graphics and even Hebrew (but no way to print right-to-left).
+
+Example: `VDU 23, 26, 3, 0, 0, 0`
+The intention is that odd-numbered font IDs select the same font as the
+next lower even number, but with UTF-8 encoding enabled. UTF-8 encoding
+is currently only implemented in the display driver, not in the keyboard driver.
+
+Restriction: no way to get the character code from the screen using GET(x,y)
+function when the 8x16 font is in use.
+
+The program `showfont.bas` displays all printable characters from the
+included Unicode font.
+
+The Unicode font is derived from the "Terminus Font", which is
+Copyright (C) 2020 Dimitar Toshkov Zhekov and released under the OFL
+(included in this repository). The file `ter_u16n.bdf` was taken
+unmodified from the Terminus Font package and converted to a form
+suitable for use in Agon VDP using the program `bdf2c.py`.  The
+original package can be found at
+https://terminus-font.sourceforge.net/
+
 ### What is the Agon
 
 Agon is a modern, fully open-source, 8-bit microcomputer and microcontroller in one small, low-cost board. As a computer, it is a standalone device that requires no host PC: it puts out its own video (VGA), audio (2 identical mono channels), accepts a PS/2 keyboard and has its own mass-storage in the form of a µSD card.
