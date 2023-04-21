@@ -19,6 +19,7 @@
 // 23/10/2022:		Version 1.02: Bug fixes, cursor visibility and scrolling
 // 15/02/2023:		Version 1.03: Improved mode, colour handling and international support
 // 04/03/2023:					+ Added logical screen resolution, sendScreenPixel now sends palette index as well as RGB values
+
 // 09/03/2023:					+ Keyboard now sends virtual key data, improved VDU 19 to handle COLOUR l,p as well as COLOUR l,r,g,b
 // 15/03/2023:					+ Added terminal support for CP/M, RTC support for MOS
 // 21/03/2023:				RC2 + Added keyboard repeat delay and rate, logical coords now selectable
@@ -33,6 +34,7 @@
 // 13/04/2023:					+ Fixed bootup fail with no keyboard
 // 17/04/2023:				RC5 + Moved wait_completion in vdu so that it only executes after graphical operations
 // 18/04/2023:					+ Minor tweaks to wait completion logic
+// 21/04/2023:        LB: Added support for large fonts and UTF-8.
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -91,6 +93,8 @@ int			kbRepeatRate = 100;					// Keyboard repeat rate ms (between 33 and 500)
 bool 		initialised = false;				// Is the system initialised yet?
 bool		doWaitCompletion;					// For vdu function
 uint8_t		palette[64];						// Storage for the palette
+bool    utfMode;                  // Set if UTF-8 is selected (otherwise 1 byte character codes).
+
 
 audio_channel *	audio_channels[AUDIO_CHANNELS];	// Storage for the channel data
 
@@ -170,7 +174,7 @@ void loop() {
 // The boot screen
 //
 void boot_screen() {
-  	printFmt("Agon Quark VDP Version %d.%02d", VERSION, REVISION);
+  	printFmt("Agon Quark VDP Version %d.%02d LB UTF-8 extensions", VERSION, REVISION);
 	#if RC > 0
 	  	printFmt(" RC%d", RC);
 	#endif
@@ -248,6 +252,7 @@ uint32_t readLong_b() {
 //
 void copy_font() {
 	memcpy(fabgl::FONT_AGON_DATA + 256, fabgl::FONT_AGON_BITMAP, sizeof(fabgl::FONT_AGON_BITMAP));
+  fabgl::FONT_AGON16.data = &fabgl::ter_u16n_font_data[0].bitmap[0];  
 }
 
 // Set the RTS line value
@@ -642,7 +647,10 @@ int change_mode(int mode) {
  	gfg = colourLookup[0x3F];
 	tfg = colourLookup[0x3F];
 	tbg = colourLookup[0x00];
-  	Canvas->selectFont(&fabgl::FONT_AGON);
+    if (fabgl::fontSize == 0)
+  	  Canvas->selectFont(&fabgl::FONT_AGON);
+    else  
+      Canvas->selectFont(&fabgl::FONT_AGON16);    
   	Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
   	Canvas->setPenWidth(1);
 	origin = Point(0,0);
@@ -859,12 +867,78 @@ Point translate(int X, int Y) {
 	return Point(origin.X + X, origin.Y + Y);
 }
 
+
+void draw_unicode(uint16_t code)
+{
+  unsigned int minidx = 0;
+  unsigned int maxidx = fabgl::fontSize;
+  unsigned int mididx;
+  // Do a binary search across the character definitions until one is found that matches cde.
+  while (minidx != maxidx)
+  {
+    mididx = (minidx + maxidx) / 2;
+    if (fabgl::fontData[mididx].CodePoint < code)
+      minidx = mididx+1;
+    else if (fabgl::fontData[mididx].CodePoint > code)
+      maxidx = mididx;
+    else
+      break; // We found the character, at mididx, break out of the loop while minidx!=maxidx 
+  }
+  if (minidx == maxidx)
+    mididx = fabgl::fontSize -1; // Not found, use default code.
+  fabgl::FONT_AGON16.data = (uint8_t *)(&fabgl::fontData[mididx].bitmap[0]);
+  Canvas->drawChar(charX, charY, 0);
+}
+
 void vdu(byte c) {
 	if(c >= 0x20 && c != 0x7F) {
+    uint16_t code = c;
 		Canvas->setPenColor(tfg);
 		Canvas->setBrushColor(tbg);
- 		Canvas->drawChar(charX, charY, c);
-   		cursorRight();
+    if (utfMode)
+	  {
+      if (c < 128)
+      {
+        code = c;    // single byte characters 0..127, equivalent to ASCII.
+      }
+      else if (c >= 192 && c < 224)
+      {  
+        // Two byte characters. 128..2047
+        c = readByte_t();
+        if (c>=128 && c<192)
+          code = ((code & 0x1f)<<6) | (c & 0x3f) ;        
+        else  
+          code = 0;
+      }
+      else if (c >= 224 && c < 240)
+      {
+        // Three byte characters, 2048..65535
+        c = readByte_t();
+        if (c>=128 && c<192)
+        {
+          code = ((code & 0xf)<<12) | ((c & 0x3f)<<6) ;
+          c = readByte_t();
+          if (c>=128 && c<192)
+             code |= (c & 0x3f);
+          else 
+             code = 0;
+        }
+        else
+        {
+          code = 0;
+        }        
+      }
+      else
+      {
+        // Anything else is invalid/unsupported.
+        code = 0;
+      }
+	  }
+    if (fabgl::fontSize == 0)
+ 		  Canvas->drawChar(charX, charY, code);
+    else  
+      draw_unicode(code);
+   	cursorRight();
 	}
 	else {
 		doWaitCompletion = false;
@@ -924,7 +998,10 @@ void vdu(byte c) {
 				break;
 			case 0x7F:  // Backspace
 				cursorLeft();
-				Canvas->drawChar(charX, charY, ' ');
+        if (fabgl::fontSize == 0)
+          Canvas->drawChar(charX, charY, ' ');
+        else  
+				  draw_unicode(' ');
 				break;
 		}
 		if(doWaitCompletion) {
@@ -1137,6 +1214,27 @@ void vdu_plot_circle(byte mode) {
   	}
 }
 
+void vdu_sys_font()
+{
+  int fontsel = readByte_t();
+  readByte_t();
+  readByte_t();
+  readByte_t();  // Read 3 more dummy bytes to make it more comatible with other systems.
+  switch (fontsel/2)
+  {
+  case 0:  // standard Agon font, 8x8, redifinable characters.
+    fabgl::fontData = NULL;
+    fabgl::fontSize = 0;
+  break;  
+  case 1:  // ter_u16n AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::ter_u16n_font_data;
+    fabgl::fontSize = fabgl::ter_u16n_size;
+  break;     
+  }
+  utfMode = fontsel & 1;
+  set_mode(videoMode);
+}
+
 // Handle SYS
 // VDU 23,mode
 //
@@ -1166,6 +1264,10 @@ void vdu_sys() {
 			case 0x07: {					// VDU 23, 7
 				vdu_sys_scroll();			// Scroll 
 			}	break;
+      case 0x1A: {          // VDU 23, 26
+        vdu_sys_font();     // Select font
+        break;
+      }
 			case 0x1B: {					// VDU 23, 27
 				vdu_sys_sprites();			// Sprite system control
 			}	break;

@@ -8,11 +8,23 @@
 // 17/08/2022:		Implemented Acorn font
 // 05/09/2022:		Renamed file
 // 20/02/2023:		Marked out non-standard CP-1252 characters in comments, fixed £ and `
+// 21/04/2023:    LB: added Unicode font.
 
 #pragma once
 
 namespace fabgl {
 
+  typedef struct {
+     uint16_t CodePoint;
+     uint8_t bitmap[16];    
+  } CharDef16;
+
+#include "ter_u16n.h"
+  static const int ter_u16n_size = sizeof(ter_u16n_font_data)/sizeof(ter_u16n_font_data[0]);
+
+  const CharDef16 * fontData;
+  int fontSize; // Number of characters in the font.
+   
 	uint8_t FONT_AGON_DATA[256*8]; 
 
 	static const uint8_t FONT_AGON_BITMAP[] = {
@@ -269,4 +281,20 @@ namespace fabgl {
 		.chptr     = nullptr,
 		.codepage  = 1252,
 	};
+
+  extern FontInfo FONT_AGON16 = {
+    .pointSize = 6,
+    .width     = 8,
+    .height    = 16,
+    .ascent    = 12,
+    .inleading = 0,
+    .exleading = 0,
+    .flags     = 0,
+    .weight    = 400,
+    .charset   = 255,
+    .data      = NULL,
+    .chptr     = nullptr,
+    .codepage  = 1252,
+  };
+
 }
