@@ -18,6 +18,10 @@ The size, width and height commands are ignored. fontid:
   select with 1, 2 or 3 byte UTF-8 sequences. This contains Latin (including
   accented letters for all European languages), Greek, Cyrillic, math symbols,
   box drawing graphics and even Hebrew (but no way to print right-to-left).
+* 4 and 5 Unicode 8x16 bold font.
+* 6 and 7 Unicode 6x12 font.
+* 8 and 9 Fixedsys Excelsior Unicode 8x16 font, different character repertoire.
+* 10 and 11 Unscii Unicode 8x16 font, different character repertoire again.
 
 Example: `VDU 23, 26, 3, 0, 0, 0`
 The intention is that odd-numbered font IDs select the same font as the
@@ -28,15 +32,18 @@ Restriction: no way to get the character code from the screen using GET(x,y)
 function when the 8x16 font is in use.
 
 The program `showfont.bas` displays all printable characters from the
-included Unicode font.
+included Unicode font. Additional Basic programs for the other 2 Unicode sets.
 
-The Unicode font is derived from the "Terminus Font", which is
+The Unicode fonts 2..7 are derived from the "Terminus Font", which is
 Copyright (C) 2020 Dimitar Toshkov Zhekov and released under the OFL
-(included in this repository). The file `ter_u16n.bdf` was taken
+(included in this repository). The files `ter_*.bdf` were taken
 unmodified from the Terminus Font package and converted to a form
 suitable for use in Agon VDP using the program `bdf2c.py`.  The
 original package can be found at
 https://terminus-font.sourceforge.net/
+The other two Unicode fonts are in the public domain according to the
+source repository
+https://github.com/viznut/unscii
 
 ### What is the Agon
 

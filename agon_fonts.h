@@ -22,6 +22,18 @@ namespace fabgl {
 #include "ter_u16n.h"
   static const int ter_u16n_size = sizeof(ter_u16n_font_data)/sizeof(ter_u16n_font_data[0]);
 
+#include "ter_u16b.h"
+  static const int ter_u16b_size = sizeof(ter_u16b_font_data)/sizeof(ter_u16b_font_data[0]);
+
+#include "ter_u12n.h"
+  static const int ter_u12n_size = sizeof(ter_u12n_font_data)/sizeof(ter_u12n_font_data[0]);
+
+#include "fsex_adapted.h"
+  static const int fsex_adapted_size = sizeof(fsex_adapted_font_data)/sizeof(fsex_adapted_font_data[0]);
+
+#include "unscii_16.h"
+  static const int unscii_16_size = sizeof(unscii_16_font_data)/sizeof(unscii_16_font_data[0]);
+
   const CharDef16 * fontData;
   int fontSize; // Number of characters in the font.
    

@@ -16,9 +16,17 @@ while 1:
     if line=="": break
     if line.startswith("ENCODING"):
         charnum = int(line.split(" ")[1])
+    if line.startswith("BBX"):
+        fw = int(line.split(" ")[1])
+        fh = int(line.split(" ")[2])
+        if fw>8:
+            while 1:
+                line=infile.readline()
+                if line.startswith("ENDCHAR"): break
+            continue
         outfile.write("    {0x%04x, {"%charnum)
     if line.startswith("BITMAP"):
-        for i in range(16):
+        for i in range(fh):
             line=infile.readline()
             byteval=int(line,16)
             outfile.write("0x%02x,"%byteval)

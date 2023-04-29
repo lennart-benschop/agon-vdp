@@ -45,6 +45,7 @@
 #define REVISION		3
 #define RC				0
 
+#define UPDATE_LUT              0 // Only enable on vdp_gl library.
 #define	DEBUG			0						// Serial Debug Mode: 1 = enable
 #define SERIALKB		0						// Serial Keyboard: 1 = enable (Experimental)
 
@@ -563,6 +564,14 @@ void resetPalette(const uint8_t colours[]) {
 		palette[i] = c;
 		setPaletteItem(i, colourLookup[c]);
 	}
+#if UPDATE_LUT	
+  switch(VGAColourDepth) {
+      case 2: VGAController2.updateRGB2PaletteLUT(); break;
+      case 4: VGAController4.updateRGB2PaletteLUT(); break;
+      case 8: VGAController8.updateRGB2PaletteLUT(); break;
+      case 16: VGAController16.updateRGB2PaletteLUT(); break;
+    }
+#endif  
 }
 
 // Change video resolution
@@ -606,6 +615,11 @@ int change_resolution(int colours, char * modeLine) {
 	return 0;										// Return with no errors
 }
 
+/** Modeline for 640x512@60Hz resolution */
+#define SVGA_640x512_60Hz "\"640x512@60Hz\" 54 640 664 720 844 512 513 515 533 -HSync -VSync DoubleScan"
+/** Modeline for 320x240@60Hz resolution */
+#define SVGA_320x256_60Hz "\"320x256@60Hz\" 27 320 332 360 424 256 257 258 267 -HSync -VSync QuadScan"
+
 // Do the mode change
 // Parameters:
 // - mode: The video mode
@@ -633,6 +647,18 @@ int change_mode(int mode) {
 			case 3:
 				errVal = change_resolution(16, VGA_640x480_60Hz);
 				break;
+      case 4:
+        errVal = change_resolution(64, QVGA_320x240_60Hz);
+        break;
+      case 5:
+        errVal = change_resolution(4, SVGA_800x600_60Hz);
+        break;
+      case 6:
+        errVal = change_resolution(64, SVGA_320x256_60Hz);
+        break;
+      case 7:
+        errVal = change_resolution(8, SVGA_640x512_60Hz);
+        break;
 		}
 		if(errVal != 0) {
 			return errVal;
@@ -1021,8 +1047,9 @@ void cursorLeft() {
 }
 
 void cursorRight() {
-  	charX += Canvas->getFontInfo()->width;
-  	if(charX >= Canvas->getWidth()) {
+    int fw = Canvas->getFontInfo()->width;
+  	charX += fw;
+  	if(charX + fw > Canvas->getWidth()) {
     	cursorHome();
     	cursorDown();
   	}
@@ -1147,6 +1174,14 @@ void vdu_palette() {
 			return;
 		}
 		setPaletteItem(l, col);
+#if UPDATE_LUT	
+    switch(VGAColourDepth) {
+      case 2: VGAController2.updateRGB2PaletteLUT(); break;
+      case 4: VGAController4.updateRGB2PaletteLUT(); break;
+      case 8: VGAController8.updateRGB2PaletteLUT(); break;
+      case 16: VGAController16.updateRGB2PaletteLUT(); break;
+    }
+#endif   
 		doWaitCompletion = true;
 		debug_log("vdu_palette: %d,%d,%d,%d,%d\n\r", l, p, r, g, b);
 	}
@@ -1230,6 +1265,32 @@ void vdu_sys_font()
   case 1:  // ter_u16n AGON Unicode font, 8x16).
     fabgl::fontData = fabgl::ter_u16n_font_data;
     fabgl::fontSize = fabgl::ter_u16n_size;
+    fabgl::FONT_AGON16.width = 8;
+    fabgl::FONT_AGON16.height = 16;
+  break;     
+  case 2:  // ter_u16n AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::ter_u16b_font_data;
+    fabgl::fontSize = fabgl::ter_u16b_size;
+    fabgl::FONT_AGON16.width = 8;
+    fabgl::FONT_AGON16.height = 16;
+  break;     
+  case 3:  // ter_u16n AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::ter_u12n_font_data;
+    fabgl::fontSize = fabgl::ter_u12n_size;
+    fabgl::FONT_AGON16.width = 6;
+    fabgl::FONT_AGON16.height = 12;
+  break;     
+  case 4:  // ter_u16n AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::fsex_adapted_font_data;
+    fabgl::fontSize = fabgl::fsex_adapted_size;
+    fabgl::FONT_AGON16.width = 8;
+    fabgl::FONT_AGON16.height = 16;
+  break;     
+  case 5:  // ter_u16n AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::unscii_16_font_data;
+    fabgl::fontSize = fabgl::unscii_16_size;
+    fabgl::FONT_AGON16.width = 8;
+    fabgl::FONT_AGON16.height = 16;
   break;     
   }
   utfMode = fontsel & 1;
@@ -1486,10 +1547,6 @@ void vdu_sys_sprites(void) {
 			width = rw;
 			height = rh;
 			//
-        	// Clear out any old data first
-			//
-        	free(bitmaps[current_bitmap].data);
-			//
         	// Allocate new heap data
 			//
         	dataptr = (void *)heap_caps_malloc(sizeof(uint32_t)*width*height, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
@@ -1514,7 +1571,9 @@ void vdu_sys_sprites(void) {
 				// Create bitmap structure
 				//
 				bitmaps[current_bitmap] = Bitmap(width,height,dataptr,PixelFormat::RGBA8888);
-				bitmaps[current_bitmap].dataAllocated = false;
+				bitmaps[current_bitmap].dataAllocated = true;
+        const size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+        debug_log("vdu_sys_sprites: free heap %lu\n\r", free_heap);
 			}
 	        else {
     	    	for(n = 0; n < width*height; n++) readLong_b(); // discard incoming data
