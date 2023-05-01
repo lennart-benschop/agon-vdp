@@ -904,17 +904,31 @@ void draw_unicode(uint16_t code)
   while (minidx != maxidx)
   {
     mididx = (minidx + maxidx) / 2;
-    if (fabgl::fontData[mididx].CodePoint < code)
+    if (fabgl::fontData[mididx].CodePoint < code*2)
       minidx = mididx+1;
-    else if (fabgl::fontData[mididx].CodePoint > code)
+    else if (fabgl::fontData[mididx].CodePoint > code*2)
       maxidx = mididx;
     else
       break; // We found the character, at mididx, break out of the loop while minidx!=maxidx 
   }
   if (minidx == maxidx)
-    mididx = fabgl::fontSize -1; // Not found, use default code.
+    mididx = fabgl::fontSize - 1; // Not found, use default code.
   fabgl::FONT_AGON16.data = (uint8_t *)(&fabgl::fontData[mididx].bitmap[0]);
-  Canvas->drawChar(charX, charY, 0);
+  if (mididx < fabgl::fontSize - 1 && (fabgl::fontData[mididx+1].CodePoint & 1))
+  { // The next entry in the table is an odd number, therefore it is a double width char.
+    if(charX + 2*Canvas->getFontInfo()->width > Canvas->getWidth()) 
+    { // No room for the wide char at end of line.
+      cursorRight();      
+    }
+    Canvas->drawChar(charX, charY, 0); // draw left half of char
+    cursorRight();      
+    fabgl::FONT_AGON16.data = (uint8_t *)(&fabgl::fontData[mididx+1].bitmap[0]);  
+    Canvas->drawChar(charX, charY, 0); // draw right half of char    
+  }
+  else
+  {
+    Canvas->drawChar(charX, charY, 0);
+  }
 }
 
 void vdu(byte c) {
@@ -1268,27 +1282,33 @@ void vdu_sys_font()
     fabgl::FONT_AGON16.width = 8;
     fabgl::FONT_AGON16.height = 16;
   break;     
-  case 2:  // ter_u16n AGON Unicode font, 8x16).
+  case 2:  // ter_u16b AGON Unicode font, 8x16).
     fabgl::fontData = fabgl::ter_u16b_font_data;
     fabgl::fontSize = fabgl::ter_u16b_size;
     fabgl::FONT_AGON16.width = 8;
     fabgl::FONT_AGON16.height = 16;
   break;     
-  case 3:  // ter_u16n AGON Unicode font, 8x16).
+  case 3:  // ter_u12n AGON Unicode font, 8x16).
     fabgl::fontData = fabgl::ter_u12n_font_data;
     fabgl::fontSize = fabgl::ter_u12n_size;
     fabgl::FONT_AGON16.width = 6;
     fabgl::FONT_AGON16.height = 12;
   break;     
-  case 4:  // ter_u16n AGON Unicode font, 8x16).
+  case 4:  // fsex_adapted AGON Unicode font, 8x16).
     fabgl::fontData = fabgl::fsex_adapted_font_data;
     fabgl::fontSize = fabgl::fsex_adapted_size;
     fabgl::FONT_AGON16.width = 8;
     fabgl::FONT_AGON16.height = 16;
   break;     
-  case 5:  // ter_u16n AGON Unicode font, 8x16).
+  case 5:  // unscii AGON Unicode font, 8x16).
     fabgl::fontData = fabgl::unscii_16_font_data;
     fabgl::fontSize = fabgl::unscii_16_size;
+    fabgl::FONT_AGON16.width = 8;
+    fabgl::FONT_AGON16.height = 16;
+  break;     
+  case 6:  // unifont AGON Unicode font, 8x16).
+    fabgl::fontData = fabgl::unifont_font_data;
+    fabgl::fontSize = fabgl::unifont_size;
     fabgl::FONT_AGON16.width = 8;
     fabgl::FONT_AGON16.height = 16;
   break;     

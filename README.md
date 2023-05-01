@@ -22,6 +22,7 @@ The size, width and height commands are ignored. fontid:
 * 6 and 7 Unicode 6x12 font.
 * 8 and 9 Fixedsys Excelsior Unicode 8x16 font, different character repertoire.
 * 10 and 11 Unscii Unicode 8x16 font, different character repertoire again.
+* 12 and 13 Unifont full Unicode 8x16/16x16 font.
 
 Example: `VDU 23, 26, 3, 0, 0, 0`
 The intention is that odd-numbered font IDs select the same font as the
@@ -41,9 +42,24 @@ unmodified from the Terminus Font package and converted to a form
 suitable for use in Agon VDP using the program `bdf2c.py`.  The
 original package can be found at
 https://terminus-font.sourceforge.net/
-The other two Unicode fonts are in the public domain according to the
-source repository
+The Unicode fonts fsex_adapter and unscii are in the public domain according to the source repository
 https://github.com/viznut/unscii
+
+The file unifont.h was converted from unifont.hex (first to bdf, then
+to a C header file). The file unifont.hex is derived from Roman
+Czyborra's Unicode font, which is licensed under the GPL. \
+https://savannah.gnu.org/projects/unifont/
+
+The code uses a table in flash containing 8x16 bitmaps. Bitmaps are
+found using binary search. Now that mixed width characters are
+included, the normal characters and the left halves of the
+double-width characters all have a an even numbered CodePoint field,
+where the right halves have the next odd numbered CodePoint
+field. Only BMP characters are supported, but it would not be too hard
+to add characters beyond BMP. When unifont.h is included PArtition
+Scheme in the Tools menu of the Arduino IDE should be set to Huge App
+(3MB, no OTA, 1MB SPIFFS).
+
 
 ### What is the Agon
 

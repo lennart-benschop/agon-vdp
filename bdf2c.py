@@ -19,17 +19,22 @@ while 1:
     if line.startswith("BBX"):
         fw = int(line.split(" ")[1])
         fh = int(line.split(" ")[2])
-        if fw>8:
-            while 1:
-                line=infile.readline()
-                if line.startswith("ENDCHAR"): break
-            continue
-        outfile.write("    {0x%04x, {"%charnum)
+        outfile.write("    {2*0x%04x, {"%charnum)
     if line.startswith("BITMAP"):
+        righthalf=[]
         for i in range(fh):
             line=infile.readline()
             byteval=int(line,16)
+            if fw>8:
+                righthalf.append(byteval & 0xff)
+                byteval >>=8
             outfile.write("0x%02x,"%byteval)
         outfile.write("}},\n")
+        if fw>8:
+            outfile.write("    {0x%04x, {"%(2*charnum+1))
+            for b in righthalf:
+                outfile.write("0x%02x,"%b)
+            outfile.write("}},\n")
+            
 outfile.write("};\n")
 outfile.close()

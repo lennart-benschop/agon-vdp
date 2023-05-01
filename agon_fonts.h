@@ -15,7 +15,7 @@
 namespace fabgl {
 
   typedef struct {
-     uint16_t CodePoint;
+     unsigned int CodePoint;
      uint8_t bitmap[16];    
   } CharDef16;
 
@@ -33,6 +33,9 @@ namespace fabgl {
 
 #include "unscii_16.h"
   static const int unscii_16_size = sizeof(unscii_16_font_data)/sizeof(unscii_16_font_data[0]);
+
+#include "unifont.h"
+  static const int unifont_size = sizeof(unifont_font_data)/sizeof(unifont_font_data[0]);
 
   const CharDef16 * fontData;
   int fontSize; // Number of characters in the font.
