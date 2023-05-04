@@ -624,9 +624,12 @@ int change_mode(int mode) {
 			case 2:
 				errVal = change_resolution(64, VGA_320x200_75Hz);
 				break;
-			case 3:
+ 			case 3:
 				errVal = change_resolution(16, VGA_640x480_60Hz);
 				break;
+       case 7:
+        errVal = change_resolution(16, VGA_640x480_60Hz);
+        break;
 		}
 		if(errVal != 0) {
 			return errVal;
@@ -642,7 +645,10 @@ int change_mode(int mode) {
  	gfg = colourLookup[0x3F];
 	tfg = colourLookup[0x3F];
 	tbg = colourLookup[0x00];
-  	Canvas->selectFont(&fabgl::FONT_AGON);
+    if (mode==7)
+      Canvas->selectFont(&fabgl::FONT_TTXT);
+    else  
+  	  Canvas->selectFont(&fabgl::FONT_AGON);
   	Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
   	Canvas->setPenWidth(1);
 	origin = Point(0,0);
