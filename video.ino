@@ -33,6 +33,7 @@
 // 13/04/2023:					+ Fixed bootup fail with no keyboard
 // 17/04/2023:				RC5 + Moved wait_completion in vdu so that it only executes after graphical operations
 // 18/04/2023:					+ Minor tweaks to wait completion logic
+// 04/05/2023L        LB: fixed cursorRight and cursorDown for cases where screen does not evenly divide font size.
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -943,8 +944,9 @@ void cursorLeft() {
 }
 
 void cursorRight() {
-  	charX += Canvas->getFontInfo()->width;
-  	if(charX >= Canvas->getWidth()) {
+        int fw = Canvas->getFontInfo()->width;
+  	charX += fw;
+  	if(charX + fw > Canvas->getWidth()) {
     	cursorHome();
     	cursorDown();
   	}
@@ -963,7 +965,7 @@ void cursorDown() {
 			wait_shiftkey();
 		}
 	}
-	if(charY >= ch) {
+	if(charY + fh > ch) {
 		charY -= fh;
 		Canvas->scroll(0, -fh);
 	}
