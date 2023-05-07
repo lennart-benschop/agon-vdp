@@ -33,7 +33,7 @@
 // 13/04/2023:					+ Fixed bootup fail with no keyboard
 // 17/04/2023:				RC5 + Moved wait_completion in vdu so that it only executes after graphical operations
 // 18/04/2023:					+ Minor tweaks to wait completion logic
-// 04/05/2023L        LB: fixed cursorRight and cursorDown for cases where screen does not evenly divide font size.
+// 04/05/2023:        LB: fixed cursorRight and cursorDown for cases where screen does not evenly divide font size.
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -64,6 +64,7 @@ fabgl::Terminal				Terminal;			// Used for CP/M mode
 #include "agon_fonts.h"							// The Acorn BBC Micro Font
 #include "agon_audio.h"							// The Audio class
 #include "agon_palette.h"						// Colour lookup table
+#include "agon_ttxt.h"          // Teletext display mechanics.
 
 int			VGAColourDepth;						// Number of colours per pixel (2, 4,8, 16 or 64)
 int         charX, charY;						// Current character (X, Y) coordinates
@@ -94,6 +95,8 @@ bool		doWaitCompletion;					// For vdu function
 uint8_t		palette[64];						// Storage for the palette
 
 audio_channel *	audio_channels[AUDIO_CHANNELS];	// Storage for the channel data
+agon_ttxt ttxt_instance;
+bool ttxtMode = false;
 
 ESP32Time	rtc(0);								// The RTC
 
@@ -436,6 +439,7 @@ void cls() {
  		Canvas->setBrushColor(tbg);	
 		Canvas->clear();
 	}
+  if (ttxtMode) ttxt_instance.cls();
 	if(numsprites) {
 		if(VGAController) {
 			VGAController->removeSprites();
@@ -464,6 +468,8 @@ char get_screen_char(int px, int py) {
 	RGB888	pixel;
 	uint8_t	charRow;
 	uint8_t	charData[8];
+
+  if (ttxtMode) return ttxt_instance.get_screen_char(px, py);
 
 	// Do some bounds checking first
 	//
@@ -612,7 +618,8 @@ int change_resolution(int colours, char * modeLine) {
 //
 int change_mode(int mode) {
 	int errVal = -1;
-
+  if (mode != 7) ttxtMode = false;
+  
 	cls();
 	if(mode != videoMode) {
 		switch(mode) {
@@ -630,6 +637,11 @@ int change_mode(int mode) {
 				break;
        case 7:
         errVal = change_resolution(16, VGA_640x480_60Hz);
+        if (errVal == 0)
+        {
+          errVal = ttxt_instance.init(Canvas);
+          if (errVal == 0) ttxtMode = true; 
+        }
         break;
 		}
 		if(errVal != 0) {
@@ -646,11 +658,11 @@ int change_mode(int mode) {
  	gfg = colourLookup[0x3F];
 	tfg = colourLookup[0x3F];
 	tbg = colourLookup[0x00];
-    if (mode==7)
-      Canvas->selectFont(&fabgl::FONT_TTXT);
-    else  
-  	  Canvas->selectFont(&fabgl::FONT_AGON);
-  	Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
+    if (!ttxtMode)
+    {
+ 	    Canvas->selectFont(&fabgl::FONT_AGON);
+  	  Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
+    }
   	Canvas->setPenWidth(1);
 	origin = Point(0,0);
 	p1 = Point(0,0);
@@ -870,8 +882,11 @@ void vdu(byte c) {
 	if(c >= 0x20 && c != 0x7F) {
 		Canvas->setPenColor(tfg);
 		Canvas->setBrushColor(tbg);
- 		Canvas->drawChar(charX, charY, c);
-   		cursorRight();
+    if (ttxtMode)
+      ttxt_instance.draw_char(charX, charY, c);
+    else  
+ 		  Canvas->drawChar(charX, charY, c);
+   	cursorRight();
 	}
 	else {
 		doWaitCompletion = false;
@@ -931,7 +946,10 @@ void vdu(byte c) {
 				break;
 			case 0x7F:  // Backspace
 				cursorLeft();
-				Canvas->drawChar(charX, charY, ' ');
+        if (ttxtMode)
+          ttxt_instance.draw_char(charX, charY, ' ');
+        else  
+          Canvas->drawChar(charX, charY, ' ');
 				break;
 		}
 		if(doWaitCompletion) {
@@ -974,6 +992,7 @@ void cursorDown() {
 	if(charY + fh > ch) {
 		charY -= fh;
 		Canvas->scroll(0, -fh);
+    if (ttxtMode) ttxt_instance.scroll();
 	}
 }
 
@@ -1026,6 +1045,8 @@ void vdu_origin() {
 // 
 void vdu_colour() {
 	int		colour = readByte_t();
+
+  if (ttxtMode) return;
 	byte	c = palette[colour%VGAColourDepth];
 
 	if(colour >= 0 && colour < 64) {
@@ -1045,6 +1066,7 @@ void vdu_colour() {
 // 
 void vdu_gcol() {
 	int	mode = readByte_t();
+  if (ttxtMode) return;
 	if(mode >= 0) {
 		int	colour = readByte_t();
 		if(colour >= 0) {
@@ -1062,6 +1084,7 @@ void vdu_palette() {
 	int r = readByte_t(); if(r == -1) return; // The red component
 	int g = readByte_t(); if(g == -1) return; // The green component
 	int b = readByte_t(); if(b == -1) return; // The blue component
+  if (ttxtMode) return;
 
 	RGB888 col;				// The colour to set
 
@@ -1092,6 +1115,7 @@ void vdu_plot() {
 
 	int x = readWord_t(); if(x == -1) return; else x = (short)x;
 	int y = readWord_t(); if(y == -1) return; else y = (short)y;
+  if (ttxtMode) return;
 
   	p3 = p2;
   	p2 = p1;
