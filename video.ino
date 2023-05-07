@@ -34,6 +34,7 @@
 // 17/04/2023:				RC5 + Moved wait_completion in vdu so that it only executes after graphical operations
 // 18/04/2023:					+ Minor tweaks to wait completion logic
 // 04/05/2023:        LB: fixed cursorRight and cursorDown for cases where screen does not evenly divide font size.
+// 07/05/2023:        LB: Added MODE 7 support
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -145,8 +146,10 @@ void loop() {
 		}
     	cursorVisible = ((count & 0xFFFF) == 0);
     	if(cursorVisible) {
+          if (!cursorState && ttxtMode) ttxt_instance.flash(true);
       		cursorState = !cursorState;
       		do_cursor();
+          if (!cursorState && ttxtMode) ttxt_instance.flash(false);
     	}
     	do_keyboard();
     	if(ESPSerial.available() > 0) {
@@ -437,9 +440,11 @@ void cls() {
 	if(Canvas) {
 		Canvas->setPenColor(tfg);
  		Canvas->setBrushColor(tbg);	
-		Canvas->clear();
+    if (ttxtMode) 
+        ttxt_instance.cls();
+    else
+		    Canvas->clear();
 	}
-  if (ttxtMode) ttxt_instance.cls();
 	if(numsprites) {
 		if(VGAController) {
 			VGAController->removeSprites();
@@ -991,8 +996,10 @@ void cursorDown() {
 	}
 	if(charY + fh > ch) {
 		charY -= fh;
-		Canvas->scroll(0, -fh);
-    if (ttxtMode) ttxt_instance.scroll();
+    if (ttxtMode) 
+      ttxt_instance.scroll();
+    else
+      Canvas->scroll(0, -fh);
 	}
 }
 

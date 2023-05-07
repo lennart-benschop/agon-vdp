@@ -5,6 +5,7 @@
 *   BBDATA_WASM.C RAM data definitions                            *
 *   Version 1.22a, 15-May-2021                                    *
 \*****************************************************************/
+// 06/05/2023 Extract just the teletext font from this file.
 
 const unsigned short ttxtfont[256*20] = {
 	0x0000,0x0011,0x0011,0x0019,0x0015,0x0013,0x0011,0x0011,0x8800,0x8800,0x8800,0x8800,0x8800,0x8800,0x7000,0x0000,0x0000,0x0000,0x0000,0x0000, // NU

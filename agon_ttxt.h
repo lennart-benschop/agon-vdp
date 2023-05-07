@@ -2,9 +2,10 @@
 // Title:	        Agon Video BIOS - Teletext Mode
 // Author:        	Lennart Benschop
 // Created:       	06/05/2023
-// Last Updated:	06/05/2023
+// Last Updated:	07/05/2023
 //
-// Modinfo:
+// Modinfo: 
+// 07/05/2023:    Added support for windowing (cls and scroll methods). Implemented flash
 
 #pragma once
 
@@ -40,6 +41,7 @@ class agon_ttxt {
     void scroll();
     void cls();
     void flash(bool f);
+    void set_window(int left, int bottom, int right, int top);
 	private:
     fabgl::FontInfo font;
     fabgl::Canvas * Canvas;
@@ -51,12 +53,14 @@ class agon_ttxt {
     unsigned char lastDrawn;
     RGB888 fg;
     RGB888 bg;
+    int left, bottom, right, top;
+    bool flashPhase;
     char dh_status[25]; // Double-height status per row: 0 none, 1 top half, 2 bottom half.
     void set_font_char(unsigned char dst, unsigned char src);
     void set_graph_char(unsigned char dst, unsigned char pat, bool contig);
     void setgrpbyte(int index, char dot, bool contig, bool inner);
     void display_char(int col, int row, unsigned char c);
-    void process_line(int row, int col, bool redraw);
+    void process_line(int row, int col, bool redraw, bool do_flash);
 };
 
 void agon_ttxt::display_char(int col, int row, unsigned char c)
@@ -82,7 +86,8 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
       c = c + 128;
   }
   if ((this->stateFlags & TTXT_STATE_FLAG_CONCEAL) ||
-      ((this->stateFlags & TTXT_STATE_FLAG_DHLOW) && !(this->stateFlags & TTXT_STATE_FLAG_HEIGHT)))
+      ((this->stateFlags & TTXT_STATE_FLAG_DHLOW) && !(this->stateFlags & TTXT_STATE_FLAG_HEIGHT)) ||
+      ((this->stateFlags & TTXT_STATE_FLAG_FLASH) && !this->flashPhase))
     c = 32;
   this->Canvas->setPenColor(this->fg);
   this->Canvas->setBrushColor(this->bg);
@@ -94,7 +99,8 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
 // row -- rown number 0..24
 // col -- process line up to column n.
 // redraw, redraw the characters.
-void agon_ttxt::process_line(int row, int col, bool redraw)
+// do_flash. redraw only the characters that are flashing (redraw parameter must be false).
+void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
 {
   bool redrawNext = false;
   this->font.data = this->font_data_norm;
@@ -102,6 +108,12 @@ void agon_ttxt::process_line(int row, int col, bool redraw)
      this->stateFlags = TTXT_STATE_FLAG_DHLOW;
   else
      this->stateFlags = 0;
+  if (redraw && this->dh_status[row] == 1)
+  {
+    // If we redraw the line, reconsider its double height status and that of the line below.
+    this->dh_status[row] = 0;
+    if (row < 24) this->dh_status[row+1] = 0;        
+  }
   this->bg = colourLookup[COLOUR_BLACK];
   this->fg = colourLookup[COLOUR_WHITE];
   this->lastDrawn = ' ';
@@ -142,10 +154,12 @@ void agon_ttxt::process_line(int row, int col, bool redraw)
         this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
         break;
       case 0x08:
-        this->stateFlags |= TTXT_STATE_FLAG_FLASH;        
+        this->stateFlags |= TTXT_STATE_FLAG_FLASH;
+        if (do_flash) redraw = true;        
         break;
       case 0x09:
         this->stateFlags &= ~TTXT_STATE_FLAG_FLASH;        
+        if (do_flash) redraw = false;        
         break;
       case 0x0c:
         this->stateFlags &= ~TTXT_STATE_FLAG_HEIGHT;
@@ -236,8 +250,8 @@ void agon_ttxt::process_line(int row, int col, bool redraw)
         this->lastDrawn = c;
     }
   }
-  if (redraw && redrawNext)
-     this->process_line(row+1, 40, true);
+  if (redraw && redrawNext && !do_flash)
+     this->process_line(row+1, 40, true, false);
 }
 
 // Set single byte in a font character representing a graphic.
@@ -405,6 +419,7 @@ int agon_ttxt::init(fabgl::Canvas * Canvas)
   this->Canvas = Canvas;
   Canvas->selectFont(&this->font);
   Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
+  this->set_window(0, 24, 39, 0);
   this->cls();
   return 0;
 }
@@ -431,13 +446,14 @@ void agon_ttxt::draw_char(int x, int y, unsigned char c)
   if (IS_CONTROL(c) || IS_CONTROL(oldb))
   {
      // If removing or adding control character, redraw entire line.
-     this->process_line(cy, 40, true); 
+     this->process_line(cy, 40, true, false); 
      this->lastRow = -1;
      return;
   }
   else if (cx != this->lastCol+1 || cy != this->lastRow)
   {
-      this->process_line(cy, cx, false); 
+      // If not continuing on same line after last drawn character, parse all control chars.
+      this->process_line(cy, cx, false, false); 
       this->lastCol = cx;
       this->lastRow = cy;
       
@@ -447,25 +463,78 @@ void agon_ttxt::draw_char(int x, int y, unsigned char c)
 
 void agon_ttxt::scroll()
 {
-  memcpy(this->screen_buf, this->screen_buf+40, 960);
-  memset(this->screen_buf+960, ' ', 40);
-  this->lastRow--;
-  memcpy(this->dh_status, this->dh_status+1, 24);
-  if (this->dh_status[23] == 1) 
-    this->dh_status[24] = 2;
+  if (this->left==0 && this->right==39 && this->top==0 && this->bottom==24)
+  {
+    /* Do the full screen */
+    memcpy(this->screen_buf, this->screen_buf+40, 960);
+    memset(this->screen_buf+960, ' ', 40);
+    this->lastRow--;
+    memcpy(this->dh_status, this->dh_status+1, 24);
+    if (this->dh_status[23] == 1) 
+      this->dh_status[24] = 2;
+    else
+      this->dh_status[24] = 0;
+    this->Canvas->scroll(0, -19);
+  }
   else
-    this->dh_status[24] = 0;
+  {
+    for (int row = this->top; row < this->bottom; row++)
+    {
+      memcpy(this->screen_buf+40*row+this->left,this->screen_buf+40*(row+1)+this->left , this->right+1-this->left);
+      this->process_line(row, 40, true, false);      
+    }
+    memset(this->screen_buf+40*this->bottom+this->left, ' ', this->right+1-this->left);
+    this->process_line(this->bottom, 40, true, false);
+  }
 }
 
 void agon_ttxt::cls()
 {
   this->lastRow = -1;
   this->lastCol = -1;
-  memset(this->screen_buf, ' ', 1000);
-  memset(this->dh_status, 0, 25);
+  if (this->left==0 && this->right==39 && this->top==0 && this->bottom==24)
+  {
+      /* Do the full screen */
+      memset(this->screen_buf, ' ', 1000);
+      memset(this->dh_status, 0, 25);
+      this->Canvas->clear();
+  }
+  else
+  {
+    for (int row=this->top; row <= this->bottom; row++)
+    {
+      memset(this->screen_buf+40*row+this->left, ' ', this->right+1-this->left);
+      this->process_line(row, 40, true, false);
+    }
+  }
 }
 
 
 void agon_ttxt::flash(bool f)
 {
+  this->flashPhase = f;
+  for (int i = 0; i < 24; i++)
+  {
+    for (int j = 0; j < 40; j++)
+    {
+      if ((this->screen_buf[i*40+j] & 0x7f) == 0x08)
+      {
+        // Scan/redraw the line if there is any flash control code.
+        this->process_line(i, 40, false, true); 
+        this->lastCol = -1;
+        this->lastRow = -1;
+        break; 
+      }
+    }
+  }
+}
+
+// Set the window parametes of the Teletext mode.
+// This only rules the cls and scroll methods.
+void agon_ttxt::set_window(int left, int bottom, int right, int top)
+{
+  this->left = left;
+  this->bottom = bottom;
+  this->right = right;
+  this->top = top;  
 }
