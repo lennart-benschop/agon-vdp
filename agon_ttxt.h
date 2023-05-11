@@ -6,6 +6,7 @@
 //
 // Modinfo: 
 // 07/05/2023:    Added support for windowing (cls and scroll methods). Implemented flash
+// 11/06/2023:    Fixed hold graphics semantics
 
 #pragma once
 
@@ -21,13 +22,13 @@
 #define COLOUR_WHITE   0x3F
 
 // State flags representing how a character must be displayed.
-#define TTXT_STATE_FLAG_FLASH  0x01
-#define TTXT_STATE_FLAG_CONCEAL 0x02
-#define TTXT_STATE_FLAG_HEIGHT 0x04 // Double height active.
-#define TTXT_STATE_FLAG_GRAPH  0x08
-#define TTXT_STATE_FLAG_CONTIG 0x10
-#define TTXT_STATE_FLAG_HOLD   0x20
-#define TTXT_STATE_FLAG_DHLOW  0x40 // We are on the lower row of a double-heigh.
+#define TTXT_STATE_FLAG_FLASH    0x01
+#define TTXT_STATE_FLAG_CONCEAL  0x02
+#define TTXT_STATE_FLAG_HEIGHT   0x04 // Double height active.
+#define TTXT_STATE_FLAG_GRAPH    0x08
+#define TTXT_STATE_FLAG_SEPARATE 0x10
+#define TTXT_STATE_FLAG_HOLD     0x20
+#define TTXT_STATE_FLAG_DHLOW    0x40 // We are on the lower row of a double-heigh.
 
 #define IS_CONTROL(c)  ((c & 0x60)==0)
 
@@ -50,7 +51,7 @@ class agon_ttxt {
     unsigned char *screen_buf; // Buffer containing all bytes in teletext page.
     int lastRow, lastCol;
     unsigned char stateFlags;
-    unsigned char lastDrawn;
+    unsigned char heldGraph;
     RGB888 fg;
     RGB888 bg;
     int left, bottom, right, top;
@@ -80,10 +81,10 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
   c = c & 0x7f;
   if ((this->stateFlags & TTXT_STATE_FLAG_GRAPH) && (c & 0x20)) // select graphics for chars 0x20--0x3f, 0x60--0x7f/
   { 
-    if (this->stateFlags & TTXT_STATE_FLAG_CONTIG)
-      c = c + 96;
-    else
+    if (this->stateFlags & TTXT_STATE_FLAG_SEPARATE)
       c = c + 128;
+    else
+      c = c + 96;
   }
   if ((this->stateFlags & TTXT_STATE_FLAG_CONCEAL) ||
       ((this->stateFlags & TTXT_STATE_FLAG_DHLOW) && !(this->stateFlags & TTXT_STATE_FLAG_HEIGHT)) ||
@@ -116,57 +117,28 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
   }
   this->bg = colourLookup[COLOUR_BLACK];
   this->fg = colourLookup[COLOUR_WHITE];
-  this->lastDrawn = ' ';
+  this->heldGraph = 0;
 
   for (int i=0; i<col; i++)
   {
     unsigned char c = this->screen_buf[row*40+i];
     if (IS_CONTROL(c))
     {
+      // These control codes already take effect in the same cell (for held graphics or for background colour)
       switch(c & 0x7f)
       { 
-      case 0x01: 
-        this->fg = colourLookup[COLOUR_RED];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x02: 
-        this->fg = colourLookup[COLOUR_GREEN];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x03: 
-        this->fg = colourLookup[COLOUR_YELLOW];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x04: 
-        this->fg = colourLookup[COLOUR_BLUE];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x05: 
-        this->fg = colourLookup[COLOUR_MAGENTA];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x06: 
-        this->fg = colourLookup[COLOUR_CYAN];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x07: 
-        this->fg = colourLookup[COLOUR_WHITE];
-        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        break;
-      case 0x08:
-        this->stateFlags |= TTXT_STATE_FLAG_FLASH;
-        if (do_flash) redraw = true;        
-        break;
       case 0x09:
         this->stateFlags &= ~TTXT_STATE_FLAG_FLASH;        
         if (do_flash) redraw = false;        
         break;
       case 0x0c:
         this->stateFlags &= ~TTXT_STATE_FLAG_HEIGHT;
+        heldGraph=0;
         this->font.data = this->font_data_norm;
         break;                
       case 0x0d:
         this->stateFlags |= TTXT_STATE_FLAG_HEIGHT;
+        heldGraph = 0;
         if (this->dh_status[row] == 0)
         {
           this->dh_status[row] = 1;
@@ -184,70 +156,140 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
             this->font.data = this->font_data_bottom;
         }
         break;
-      case 0x11: 
-        this->fg = colourLookup[COLOUR_RED];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x12: 
-        this->fg = colourLookup[COLOUR_GREEN];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x13: 
-        this->fg = colourLookup[COLOUR_YELLOW];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x14: 
-        this->fg = colourLookup[COLOUR_BLUE];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x15: 
-        this->fg = colourLookup[COLOUR_MAGENTA];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x16: 
-        this->fg = colourLookup[COLOUR_CYAN];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
-      case 0x17: 
-        this->fg = colourLookup[COLOUR_WHITE];
-        this->stateFlags |= (TTXT_STATE_FLAG_GRAPH|TTXT_STATE_FLAG_CONTIG);
-        break;
       case 0x18:
         this->stateFlags |= TTXT_STATE_FLAG_CONCEAL;
         break;
-      case 0x19:
-        this->stateFlags |= TTXT_STATE_FLAG_CONTIG;
-        break;
-      case 0x1A:
-        this->stateFlags &= ~TTXT_STATE_FLAG_CONTIG;
-        break;
       case 0x1C: 
         this->bg = colourLookup[COLOUR_BLACK];
-        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
         break;
       case 0x1D: 
         this->bg = this->fg;
+        break;
+      case 0x1E:
+        this->stateFlags |= TTXT_STATE_FLAG_HOLD;
+        break;
+      }
+      if (redraw)
+      {
+        this->Canvas->setPenColor(this->fg);
+        this->Canvas->setBrushColor(this->bg);
+        if (heldGraph == 0 || !(this->stateFlags & TTXT_STATE_FLAG_HOLD) ||
+            (this->stateFlags & TTXT_STATE_FLAG_CONCEAL) ||
+            ((this->stateFlags & TTXT_STATE_FLAG_DHLOW) && !(this->stateFlags & TTXT_STATE_FLAG_HEIGHT)) ||
+            ((this->stateFlags & TTXT_STATE_FLAG_FLASH) && !this->flashPhase))
+            this->Canvas->drawChar(i*16, row*19, 32);
+         else   
+            this->Canvas->drawChar(i*16, row*19, heldGraph);
+      }
+      // Thse control codes will take effect in the next cell.
+      switch(c & 0x7f)
+      { 
+      case 0x01: 
+        this->fg = colourLookup[COLOUR_RED];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
         this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
         break;
-     case 0x1E:
-        this->stateFlags |= TTXT_STATE_FLAG_HOLD;
+      case 0x02: 
+        this->fg = colourLookup[COLOUR_GREEN];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x03: 
+        this->fg = colourLookup[COLOUR_YELLOW];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x04: 
+        this->fg = colourLookup[COLOUR_BLUE];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x05: 
+        this->fg = colourLookup[COLOUR_MAGENTA];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x06: 
+        this->fg = colourLookup[COLOUR_CYAN];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x07: 
+        this->fg = colourLookup[COLOUR_WHITE];
+        if (this->stateFlags & TTXT_STATE_FLAG_GRAPH) heldGraph=' ';
+        this->stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x08:
+        this->stateFlags |= TTXT_STATE_FLAG_FLASH;
+        if (do_flash) redraw = true;        
+        break;
+      case 0x11: 
+        this->fg = colourLookup[COLOUR_RED];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x12: 
+        this->fg = colourLookup[COLOUR_GREEN];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x13: 
+        this->fg = colourLookup[COLOUR_YELLOW];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x14: 
+        this->fg = colourLookup[COLOUR_BLUE];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x15: 
+        this->fg = colourLookup[COLOUR_MAGENTA];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x16: 
+        this->fg = colourLookup[COLOUR_CYAN];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x17: 
+        this->fg = colourLookup[COLOUR_WHITE];
+        this->stateFlags |= TTXT_STATE_FLAG_GRAPH;
+        this->stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+        break;
+      case 0x19:
+        this->stateFlags &= ~TTXT_STATE_FLAG_SEPARATE;
+        break;
+      case 0x1A:
+        this->stateFlags |= TTXT_STATE_FLAG_SEPARATE;
         break;
       case 0x1F:
         this->stateFlags &= ~TTXT_STATE_FLAG_HOLD;
         break;                   
       }
+    }
+    else 
+    {
+      heldGraph  = 0;
+      if ((stateFlags & TTXT_STATE_FLAG_GRAPH) && (c & 0x20))
+      {
+         if (stateFlags & TTXT_STATE_FLAG_SEPARATE)
+           heldGraph = (c & 0x7f) + 128;
+         else
+           heldGraph = (c & 0x7f) + 96;      
+      } 
       if (redraw)
       {
-        if(this->stateFlags & TTXT_STATE_FLAG_HOLD)
-          this->display_char(i, row, this->lastDrawn);
-        else  
-          this->display_char(i, row, ' '); // Cause background colour to be displayed.
-      }
-    }
-    else if (redraw)
-    {
         this->display_char(i, row, c);
-        this->lastDrawn = c;
+      } 
     }
   }
   if (redraw && redrawNext && !do_flash)
@@ -474,7 +516,13 @@ void agon_ttxt::scroll()
       this->dh_status[24] = 2;
     else
       this->dh_status[24] = 0;
-    this->Canvas->scroll(0, -19);
+     this->Canvas->scroll(0, -19);
+     if (this->dh_status[0] == 2)
+     {
+        this->dh_status[0] = 1;
+        process_line(0, 40, true, false);
+        lastRow = -1;
+     }     
   }
   else
   {
@@ -512,20 +560,27 @@ void agon_ttxt::cls()
 
 void agon_ttxt::flash(bool f)
 {
-  this->flashPhase = f;
+  flashPhase = f;
+  bool fUpdated = false;
+  RGB888 oldbg = this->bg;
   for (int i = 0; i < 24; i++)
   {
     for (int j = 0; j < 40; j++)
     {
-      if ((this->screen_buf[i*40+j] & 0x7f) == 0x08)
+      if ((screen_buf[i*40+j] & 0x7f) == 0x08)
       {
         // Scan/redraw the line if there is any flash control code.
-        this->process_line(i, 40, false, true); 
-        this->lastCol = -1;
-        this->lastRow = -1;
+        process_line(i, 40, false, true); 
+        fUpdated = true;
         break; 
       }
     }
+  }
+  if (fUpdated)
+  {
+    if (lastRow >= 0) 
+      process_line(lastRow, lastCol, false, false);
+    this->Canvas->setBrushColor(oldbg);
   }
 }
 
