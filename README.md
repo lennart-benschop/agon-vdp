@@ -1,5 +1,15 @@
 # agon-vdp
 
+This version implements MODE 7, the Teletext mode of the BBC micro. To
+test this, I included a small program `ttxt.bas` and the program
+`mode7dem.bas` which was derived from a program included with BBC
+Basic 86 Plus (R.T. Russell). A similar program is included with BBC
+Basic for SDL and it includes more example pages (`mode7dem.car`).
+
+The VDP code does not implement the Full Level One Functionality
+(black foreground, alternative character set), so that page will not
+render as it should. The other pages should render perfectly.
+
 Part of the official Quark firmware for the Agon series of microcomputers
 
 ### What is the Agon

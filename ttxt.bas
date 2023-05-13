@@ -13,7 +13,7 @@
   120 VDU 158,151,166,150,150,150,135,135:PRINT "2 white 3 cyan"
   130 VDU 151,166,158,135,135: PRINT "3 white"
   140 VDU 158,151,193,150,135: PRINT "Letter not replciated"
-  150 VDU 158,151,166,136,150,137,135,135: PRINT "2 white 2 flashing, 2 cyan"
+  150 VDU 158,151,166,136,150,137,135,135: PRINT "2 white 1 flashing, 2 cyan"
   160 VDU 158,151,157,150,166,156,156,135,135:PRINT "1 cyan on white, 3 cyan on blk"
   170 VDU 158,151,166,159,159,166,135:PRINT "2 white 1 blank 1 white"
   180 VDU 158,151,166,141,166,150,140,135:PRINT "1 single 2 double height"
