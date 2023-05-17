@@ -44,6 +44,7 @@
 #define REVISION		3
 #define RC				0
 
+#define UPDATE_LUT              1 // Only enable on vdp_gl library.
 #define	DEBUG			0						// Serial Debug Mode: 1 = enable
 #define SERIALKB		0						// Serial Keyboard: 1 = enable (Experimental)
 
@@ -569,6 +570,14 @@ void resetPalette(const uint8_t colours[]) {
 		palette[i] = c;
 		setPaletteItem(i, colourLookup[c]);
 	}
+#if UPDATE_LUT	
+      switch(VGAColourDepth) {
+        case 2: VGAController2.updateRGB2PaletteLUT(); break;
+      	case 4: VGAController4.updateRGB2PaletteLUT(); break;
+      	case 8: VGAController8.updateRGB2PaletteLUT(); break;
+      	case 16: VGAController16.updateRGB2PaletteLUT(); break;
+    }
+#endif  
 }
 
 // Change video resolution
@@ -1107,6 +1116,14 @@ void vdu_palette() {
 			return;
 		}
 		setPaletteItem(l, col);
+#if UPDATE_LUT	
+    		switch(VGAColourDepth) {
+		   case 2: VGAController2.updateRGB2PaletteLUT(); break;
+		   case 4: VGAController4.updateRGB2PaletteLUT(); break;
+		   case 8: VGAController8.updateRGB2PaletteLUT(); break;
+		   case 16: VGAController16.updateRGB2PaletteLUT(); break;
+    		}
+#endif   
 		doWaitCompletion = true;
 		debug_log("vdu_palette: %d,%d,%d,%d,%d\n\r", l, p, r, g, b);
 	}
