@@ -35,6 +35,7 @@
 // 18/04/2023:					+ Minor tweaks to wait completion logic
 // 04/05/2023:        LB: fixed cursorRight and cursorDown for cases where screen does not evenly divide font size.
 // 07/05/2023:        LB: Added MODE 7 support
+// 17/05/2023:        LB: Added 640x512 teletext mode. Added palette LUT update.
 
 #include "fabgl.h"
 #include "HardwareSerial.h"
@@ -632,7 +633,7 @@ int change_resolution(int colours, char * modeLine) {
 //
 int change_mode(int mode) {
 	int errVal = -1;
-  if (mode != 7) ttxtMode = false;
+  if (mode != 7 && mode != 15) ttxtMode = false;
   
 	cls();
 	if(mode != videoMode) {
@@ -651,6 +652,14 @@ int change_mode(int mode) {
 				break;
        case 7:
         errVal = change_resolution(16, VGA_640x480_60Hz);
+        if (errVal == 0)
+        {
+          errVal = ttxt_instance.init(Canvas);
+          if (errVal == 0) ttxtMode = true; 
+        }
+        break;
+       case 15:
+        errVal = change_resolution(8, QSVGA_640x512_60Hz);
         if (errVal == 0)
         {
           errVal = ttxt_instance.init(Canvas);

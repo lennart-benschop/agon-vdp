@@ -100,7 +100,7 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
     c = 32;
   m_Canvas->setPenColor(m_fg);
   m_Canvas->setBrushColor(m_bg);
-  m_Canvas->drawChar(col*16, row*19, c);
+  m_Canvas->drawChar(col*16, row*m_font.height, c);
 }
 
 
@@ -313,80 +313,97 @@ void agon_ttxt::setgrpbyte(int index, char dot, bool contig, bool inner)
 // dst - position in font_data_norm
 // src - position in ttxtfont.
 // Note: the ttxtfont array contains a 16x20 font stored as 16-bit values, 
-// while the target is a 16x19 font stored as bytes. The bottom row (blank)  will not be copied.
+// while the target is a 16x19 or 16x20 font stored as bytes. The bottom row (blank)  will not be copied if font height = 19.
 void agon_ttxt::set_font_char(unsigned char dst, unsigned char src)
 {
-  for (int i = 0; i < 19; i++)
+  for (int i = 0; i < m_font.height; i++)
   {
     uint16_t w = ttxtfont[src*20 + i];
-    m_font_data_norm[dst*38+2*i] = w & 0xff;
-    m_font_data_norm[dst*38+2*i+1] = w >> 8;    
+    m_font_data_norm[dst*2*m_font.height+2*i] = w & 0xff;
+    m_font_data_norm[dst*2*m_font.height+2*i+1] = w >> 8;    
   }
 }
 
-// Store the required graphics character into the font_data_norm member/
+// Store the required graphics character into the font_data_norm member.
 // dst - position in font_data_norm
 // pat - bit pattern of graphics character.
 // contig - is character contiguoes.
 void agon_ttxt::set_graph_char(unsigned char dst, unsigned char pat, bool contig)
 {
+  int b1,b2,b3;
+  if (m_font.height==19)
+  {
+    b1 = 6; b2 = 7; b3 = 6; // Heights of the graphics blocks
+  }
+  else
+  { // font height = 20.
+    b1 = 7; b2 = 6; b3 = 7;
+  }
+  
   // Top row outer lines
-  setgrpbyte(dst*38+0, pat>>0, contig, false);
-  setgrpbyte(dst*38+1, pat>>1, contig, false);
+  setgrpbyte(dst*2*m_font.height+0, pat>>0, contig, false);
+  setgrpbyte(dst*2*m_font.height+1, pat>>1, contig, false);
   // Inner blocks of top row
-  setgrpbyte(dst*38+2, pat>>0, contig, true);
-  setgrpbyte(dst*38+3, pat>>1, contig, true);
-  setgrpbyte(dst*38+4, pat>>0, contig, true);
-  setgrpbyte(dst*38+5, pat>>1, contig, true);
-  setgrpbyte(dst*38+6, pat>>0, contig, true);
-  setgrpbyte(dst*38+7, pat>>1, contig, true);
-  setgrpbyte(dst*38+8, pat>>0, contig, true);
-  setgrpbyte(dst*38+9, pat>>1, contig, true);
+  for (int i=1; i<b1-1; i++)
+  {
+    setgrpbyte(dst*2*m_font.height+2*i, pat>>0, contig, true);
+    setgrpbyte(dst*2*m_font.height+2*i+1, pat>>1, contig, true);
+  }
   // Top row outer lines
-  setgrpbyte(dst*38+10, pat>>0, contig, false);
-  setgrpbyte(dst*38+11, pat>>1, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*b1-2, pat>>0, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*b1-1, pat>>1, contig, false);
   // Middle row outer lines
-  setgrpbyte(dst*38+12, pat>>2, contig, false);
-  setgrpbyte(dst*38+13, pat>>3, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*b1,   pat>>2, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*b1+1, pat>>3, contig, false);
   // Middle row inner lines
-  setgrpbyte(dst*38+14, pat>>2, contig, true);
-  setgrpbyte(dst*38+15, pat>>3, contig, true);
-  setgrpbyte(dst*38+16, pat>>2, contig, true);
-  setgrpbyte(dst*38+17, pat>>3, contig, true);
-  setgrpbyte(dst*38+18, pat>>2, contig, true);
-  setgrpbyte(dst*38+19, pat>>3, contig, true);
-  setgrpbyte(dst*38+20, pat>>2, contig, true);
-  setgrpbyte(dst*38+21, pat>>3, contig, true);
-  setgrpbyte(dst*38+22, pat>>2, contig, true);
-  setgrpbyte(dst*38+23, pat>>3, contig, true);
+  for (int i=b1+1; i<b1+b2-1; i++)
+  {
+    setgrpbyte(dst*2*m_font.height+2*i,   pat>>2, contig, true);
+    setgrpbyte(dst*2*m_font.height+2*i+1, pat>>3, contig, true);
+  }
   // Middle row outer lines
-  setgrpbyte(dst*38+24, pat>>2, contig, false);
-  setgrpbyte(dst*38+25, pat>>3, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2-1),  pat>>2, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2-1)+1, pat>>3, contig, false);
   // Bottom row, outer lines
-  setgrpbyte(dst*38+26, pat>>4, contig, false);
-  setgrpbyte(dst*38+27, pat>>5, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2),   pat>>4, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2)+1, pat>>5, contig, false);
   // Bottom row, inner lines
-  setgrpbyte(dst*38+28, pat>>4, contig, true);
-  setgrpbyte(dst*38+29, pat>>5, contig, true);
-  setgrpbyte(dst*38+30, pat>>4, contig, true);
-  setgrpbyte(dst*38+31, pat>>5, contig, true);
-  setgrpbyte(dst*38+32, pat>>4, contig, true);
-  setgrpbyte(dst*38+33, pat>>5, contig, true);
-  setgrpbyte(dst*38+34, pat>>4, contig, true);
-  setgrpbyte(dst*38+35, pat>>5, contig, true);
+  for (int i=b1+b2+1; i<b1+b2+b3-1; i++)
+  {
+    setgrpbyte(dst*2*m_font.height+2*i,   pat>>4, contig, true);
+    setgrpbyte(dst*2*m_font.height+2*i+1, pat>>5, contig, true);
+  }
   // Bottom row, outer lines
-  setgrpbyte(dst*38+36, pat>>4, contig, false);
-  setgrpbyte(dst*38+37, pat>>5, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2+b3-1), pat>>4, contig, false);
+  setgrpbyte(dst*2*m_font.height+2*(b1+b2+b3-1)+1, pat>>5, contig, false);
 }
 
 
 int agon_ttxt::init(fabgl::Canvas * Canvas)
 {
+  int oldh = m_font.height;
+  if (Canvas->getHeight() >= 500)
+  {
+      m_font.height = 20;
+  }
+  else
+  {
+      m_font.height = 19;    
+  }
+  m_font.pointSize = 12;
+  m_font.width = 16;
+  m_font.ascent = 12;
+  m_font.weight = 400;
+  m_font.charset = 255;
+  m_font.codepage = 1252;
   if (m_font_data_norm == NULL)
   {
     m_font_data_norm=(unsigned char*)heap_caps_malloc(40*256, MALLOC_CAP_8BIT|MALLOC_CAP_SPIRAM);
     if (m_font_data_norm == NULL)
       return -1;
+  }
+  if (oldh != m_font.height)
+  {  
     for (int i=32; i<127; i++)
       set_font_char(i, i);
     // Set the characters that differ from standard ASCII (in UK teletext char set).
@@ -416,13 +433,16 @@ int agon_ttxt::init(fabgl::Canvas * Canvas)
     m_font_data_top=(unsigned char*)heap_caps_malloc(40*256, MALLOC_CAP_8BIT|MALLOC_CAP_SPIRAM);
     if (m_font_data_top == NULL)
       return -1;
+  }
+  if (oldh != m_font.height)
+  {
     for (int i=32; i<256; i++)
     {
-      unsigned char *p = m_font_data_norm+38*i;
-      for (int j=0; j<19; j++)
+      unsigned char *p = m_font_data_norm+2*m_font.height*i;
+      for (int j=0; j<m_font.height; j++)
       {
-        m_font_data_top[i*38+j*2] = *p;
-        m_font_data_top[i*38+j*2+1] = *(p+1);
+        m_font_data_top[i*2*m_font.height+j*2] = *p;
+        m_font_data_top[i*2*m_font.height+j*2+1] = *(p+1);
         if (j%2 == 1) p+=2;
       }
     }
@@ -432,14 +452,17 @@ int agon_ttxt::init(fabgl::Canvas * Canvas)
     m_font_data_bottom=(unsigned char*)heap_caps_malloc(40*256, MALLOC_CAP_8BIT|MALLOC_CAP_SPIRAM);
     if (m_font_data_bottom == NULL)
       return -1;
+  }
+  if (oldh != m_font.height)
+  {
     for (int i=32; i<256; i++)
     {
-      unsigned char *p = m_font_data_norm+38*i+18;
-      for (int j=0; j<19; j++)
+      unsigned char *p = m_font_data_norm+2*m_font.height*i+(m_font.height==20?20:18);
+      for (int j=0; j<m_font.height; j++)
       {
-        m_font_data_bottom[i*38+j*2] = *p;
-        m_font_data_bottom[i*38+j*2+1] = *(p+1);
-        if (j%2 == 0) p+=2;
+        m_font_data_bottom[i*2*m_font.height+j*2] = *p;
+        m_font_data_bottom[i*2*m_font.height+j*2+1] = *(p+1);
+        if (j%2 == (m_font.height==20)) p+=2;
       }
     }
   }
@@ -449,13 +472,6 @@ int agon_ttxt::init(fabgl::Canvas * Canvas)
     if (m_screen_buf == NULL)
       return -1;      
   }
-  m_font.pointSize = 12;
-  m_font.width = 16;
-  m_font.height = 19;
-  m_font.ascent = 12;
-  m_font.weight = 400;
-  m_font.charset = 255;
-  m_font.codepage = 1252;
   m_Canvas = Canvas;
   m_Canvas->selectFont(&m_font);
   m_Canvas->setGlyphOptions(GlyphOptions().FillBackground(true));
@@ -514,7 +530,7 @@ void agon_ttxt::scroll()
       m_dh_status[24] = 2;
     else
       m_dh_status[24] = 0;
-     m_Canvas->scroll(0, -19);
+     m_Canvas->scroll(0, -m_font.height);
      if (m_dh_status[0] == 2)
      {
         m_dh_status[0] = 1;
