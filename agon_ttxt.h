@@ -120,194 +120,196 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
 // do_flash. redraw only the characters that are flashing (redraw parameter must be false).
 void agon_ttxt::process_line(int row, int col, agon_ttxt_op_t op)
 {
-  bool redrawNext = false;
   int maxcol;
+  int old_dhstatus;
   bool redraw = (op == AGON_TTXT_OP_REPAINT);
   unsigned char heldGraph;
-  if (op == AGON_TTXT_OP_SCAN) 
-    maxcol = col;
-  else
-    maxcol = 40;
-  m_font.data = m_font_data_norm;
-  if (m_dh_status[row] == 2) 
-     m_stateFlags = TTXT_STATE_FLAG_DHLOW;
-  else
-     m_stateFlags = 0;
-  if ((op == AGON_TTXT_OP_UPDATE) && m_dh_status[row] == 1)
-  {
-    // If we update a control character in the line, reconsider its double height status and that of the line below.
-    m_dh_status[row] = 0;
-    if (row < 24) m_dh_status[row+1] = 0;        
-  }
-  m_bg = colourLookup[COLOUR_BLACK];
-  m_fg = colourLookup[COLOUR_WHITE];
-  heldGraph = 0;
+  do {
+    if (op == AGON_TTXT_OP_SCAN) 
+      maxcol = col;
+    else
+      maxcol = 40;
+    m_font.data = m_font_data_norm;
+    if (m_dh_status[row] == 2) 
+      m_stateFlags = TTXT_STATE_FLAG_DHLOW;
+    else
+      m_stateFlags = 0;
+    old_dhstatus = m_dh_status[row];
+    if ((op == AGON_TTXT_OP_UPDATE) && m_dh_status[row] == 1)
+    {
+       // If we update a control character in the line, reconsider its double height status and that of the line below.
+       m_dh_status[row] = 0;
+       if (row < 24) m_dh_status[row+1] = 0;        
+    }
+    m_bg = colourLookup[COLOUR_BLACK];
+    m_fg = colourLookup[COLOUR_WHITE];
+    heldGraph = 0;
 
-  for (int i=0; i<maxcol; i++)
-  {
-    unsigned char c = m_screen_buf[row*40+i];
-    if (op == AGON_TTXT_OP_UPDATE && i==col) redraw = true; // Start redrawing updated line.
-    if (IS_CONTROL(c))
+    for (int i=0; i<maxcol; i++)
     {
-      // These control codes already take effect in the same cell (for held graphics or for background colour)
-      switch(c & 0x7f)
-      { 
-      case 0x09:
-        m_stateFlags &= ~TTXT_STATE_FLAG_FLASH;        
-        if (op == AGON_TTXT_OP_FLASH) redraw = false;        
-        break;
-      case 0x0c:
-        m_stateFlags &= ~TTXT_STATE_FLAG_HEIGHT;
-        heldGraph=0;
-        m_font.data = m_font_data_norm;
-        break;                
-      case 0x0d:
-        m_stateFlags |= TTXT_STATE_FLAG_HEIGHT;
-        heldGraph = 0;
-        if (m_dh_status[row] == 0)
-        {
-          m_dh_status[row] = 1;
-          if (row<24) {
-            m_dh_status[row+1] = 2;
-            if (op == AGON_TTXT_OP_UPDATE) redrawNext = true;
-          }
-          m_font.data = m_font_data_top;
-        } else if (m_dh_status[row] == 1)
-        {
+      unsigned char c = m_screen_buf[row*40+i];
+      if (op == AGON_TTXT_OP_UPDATE && i==col) redraw = true; // Start redrawing updated line.
+      if (IS_CONTROL(c))
+      {
+        // These control codes already take effect in the same cell (for held graphics or for background colour)
+        switch(c & 0x7f)
+        { 
+        case 0x09:
+          m_stateFlags &= ~TTXT_STATE_FLAG_FLASH;        
+          if (op == AGON_TTXT_OP_FLASH) redraw = false;        
+          break;
+        case 0x0c:
+          m_stateFlags &= ~TTXT_STATE_FLAG_HEIGHT;
+          heldGraph=0;
+          m_font.data = m_font_data_norm;
+          break;                
+        case 0x0d:
+          m_stateFlags |= TTXT_STATE_FLAG_HEIGHT;
+          heldGraph = 0;
+          if (m_dh_status[row] == 0)
+          {
+            m_dh_status[row] = 1;
+            if (row<24) {
+              m_dh_status[row+1] = 2;
+            }
             m_font.data = m_font_data_top;
-        }
-        else
-        {
+          } else if (m_dh_status[row] == 1)
+          {
+            m_font.data = m_font_data_top;
+          }
+          else
+          {
             m_font.data = m_font_data_bottom;
+          }
+          break;
+        case 0x18:
+          m_stateFlags |= TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x1C: 
+          m_bg = colourLookup[COLOUR_BLACK];
+          break;
+        case 0x1D: 
+          m_bg = m_fg;
+          break;
+        case 0x1E:
+          m_stateFlags |= TTXT_STATE_FLAG_HOLD;
+          break;
         }
-        break;
-      case 0x18:
-        m_stateFlags |= TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x1C: 
-        m_bg = colourLookup[COLOUR_BLACK];
-        break;
-      case 0x1D: 
-        m_bg = m_fg;
-        break;
-      case 0x1E:
-        m_stateFlags |= TTXT_STATE_FLAG_HOLD;
-        break;
+        if (redraw)
+        {
+          if (heldGraph && (m_stateFlags & TTXT_STATE_FLAG_HOLD))
+            display_char(i, row, heldGraph);
+          else
+            display_char(i, row, ' ');
+        }
+        // Thse control codes will take effect in the next cell.
+        switch(c & 0x7f)
+        { 
+        case 0x01: 
+          m_fg = colourLookup[COLOUR_RED];
+          heldGraph = 0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x02: 
+          m_fg = colourLookup[COLOUR_GREEN];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x03: 
+          m_fg = colourLookup[COLOUR_YELLOW];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x04: 
+          m_fg = colourLookup[COLOUR_BLUE];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x05: 
+          m_fg = colourLookup[COLOUR_MAGENTA];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x06: 
+          m_fg = colourLookup[COLOUR_CYAN];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x07: 
+          m_fg = colourLookup[COLOUR_WHITE];
+          heldGraph=0;
+          m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x08:
+          m_stateFlags |= TTXT_STATE_FLAG_FLASH;
+          if (op==AGON_TTXT_OP_FLASH) redraw = true;        
+          break;
+          case 0x11: 
+          m_fg = colourLookup[COLOUR_RED];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x12: 
+          m_fg = colourLookup[COLOUR_GREEN];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x13: 
+          m_fg = colourLookup[COLOUR_YELLOW];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x14: 
+          m_fg = colourLookup[COLOUR_BLUE];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x15: 
+          m_fg = colourLookup[COLOUR_MAGENTA];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x16: 
+          m_fg = colourLookup[COLOUR_CYAN];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x17: 
+          m_fg = colourLookup[COLOUR_WHITE];
+          m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
+          m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
+          break;
+        case 0x19:
+          m_stateFlags &= ~TTXT_STATE_FLAG_SEPARATE;
+          break;
+        case 0x1A:
+          m_stateFlags |= TTXT_STATE_FLAG_SEPARATE;
+          break;
+        case 0x1F:
+          m_stateFlags &= ~TTXT_STATE_FLAG_HOLD;
+          break;                   
+        }
       }
-      if (redraw)
+      else 
       {
-        if (heldGraph && (m_stateFlags & TTXT_STATE_FLAG_HOLD))
-          display_char(i, row, heldGraph);
-        else
-          display_char(i, row, ' ');
-      }
-      // Thse control codes will take effect in the next cell.
-      switch(c & 0x7f)
-      { 
-      case 0x01: 
-        m_fg = colourLookup[COLOUR_RED];
-        heldGraph = 0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x02: 
-        m_fg = colourLookup[COLOUR_GREEN];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x03: 
-        m_fg = colourLookup[COLOUR_YELLOW];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x04: 
-        m_fg = colourLookup[COLOUR_BLUE];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x05: 
-        m_fg = colourLookup[COLOUR_MAGENTA];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x06: 
-        m_fg = colourLookup[COLOUR_CYAN];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x07: 
-        m_fg = colourLookup[COLOUR_WHITE];
-        heldGraph=0;
-        m_stateFlags &= ~TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x08:
-        m_stateFlags |= TTXT_STATE_FLAG_FLASH;
-        if (op==AGON_TTXT_OP_FLASH) redraw = true;        
-        break;
-      case 0x11: 
-        m_fg = colourLookup[COLOUR_RED];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x12: 
-        m_fg = colourLookup[COLOUR_GREEN];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x13: 
-        m_fg = colourLookup[COLOUR_YELLOW];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x14: 
-        m_fg = colourLookup[COLOUR_BLUE];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x15: 
-        m_fg = colourLookup[COLOUR_MAGENTA];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x16: 
-        m_fg = colourLookup[COLOUR_CYAN];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x17: 
-        m_fg = colourLookup[COLOUR_WHITE];
-        m_stateFlags |= TTXT_STATE_FLAG_GRAPH;
-        m_stateFlags &= ~TTXT_STATE_FLAG_CONCEAL;
-        break;
-      case 0x19:
-        m_stateFlags &= ~TTXT_STATE_FLAG_SEPARATE;
-        break;
-      case 0x1A:
-        m_stateFlags |= TTXT_STATE_FLAG_SEPARATE;
-        break;
-      case 0x1F:
-        m_stateFlags &= ~TTXT_STATE_FLAG_HOLD;
-        break;                   
+        c = translate_char(c);
+        if (c>=128) heldGraph = c; else heldGraph = 0;
+        if (redraw)
+        {
+          this->display_char(i, row, c);
+        } 
       }
     }
-    else 
-    {
-      c = translate_char(c);
-      if (c>=128) heldGraph = c; else heldGraph = 0;
-      if (redraw)
-      {
-        this->display_char(i, row, c);
-      } 
-    }
-  }
-  if (redrawNext)
-     process_line(row+1, 0, AGON_TTXT_OP_UPDATE);
+    row += 1;
+    col = 0;
+  } while (old_dhstatus != m_dh_status[row-1]); // If the double height status changed, draw next row too.
 }
 
 // Set single byte in a font character representing a graphic.
@@ -561,8 +563,8 @@ void agon_ttxt::scroll()
       memcpy(m_screen_buf+40*row+m_left,m_screen_buf+40*(row+1)+m_left , m_right+1-m_left);
     }
     memset(m_screen_buf+40*m_bottom+m_left, ' ', m_right + 1 - m_left);
-    memset(m_dh_status+m_top, 0, m_bottom + 1 - m_top);
-    for (int row = m_top; row <= m_bottom; row++)
+    memset(m_dh_status, 0, 25);
+    for (int row = 0; row < 25; row++)
     {    
       process_line(row, 40, AGON_TTXT_OP_REPAINT);
     }    
@@ -586,8 +588,8 @@ void agon_ttxt::cls()
     {
       memset(m_screen_buf+40*row+m_left, ' ', m_right + 1 - m_left);
     }
-    memset(m_dh_status+m_top, 0, m_bottom + 1 - m_top);
-    for (int row=m_top; row <= m_bottom; row++)
+    memset(m_dh_status, 0, 25);
+    for (int row=0; row < 25; row++)
     {
       this->process_line(row, 40, AGON_TTXT_OP_REPAINT);
     }
@@ -601,7 +603,7 @@ void agon_ttxt::flash(bool f)
   bool fUpdated = false;
   RGB888 oldbg = m_bg;
   RGB888 oldfg = m_fg;
-  for (int i = 0; i < 24; i++)
+  for (int i = 0; i < 25; i++)
   {
     for (int j = 0; j < 40; j++)
     {
