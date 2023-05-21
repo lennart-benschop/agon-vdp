@@ -7,7 +7,7 @@
 // Modinfo: 
 // 07/05/2023:    Added support for windowing (cls and scroll methods). Implemented flash
 // 11/06/2023:    Fixed hold graphics semantics
-// 13/06/2023:    Refactored thje code, made all private member variables prefix m_
+// 13/06/2023:    Refactored the code, made all private member variables prefix m_
 
 #pragma once
 
@@ -32,6 +32,15 @@
 #define TTXT_STATE_FLAG_DHLOW    0x40 // We are on the lower row of a double-heigh.
 
 #define IS_CONTROL(c)  ((c & 0x60)==0)
+
+// Type of operation for process_lline.
+typedef enum {
+  AGON_TTXT_OP_SCAN,     // Scan a text row to set attributes for next character displayed.
+  AGON_TTXT_OP_UPDATE,   // Update a control code in the row, redraw row from column position (possibly also rows below for double-height).
+  AGON_TTXT_OP_FLASH,    // Update the flashing characters in the row.
+  AGON_TTXT_OP_REPAINT,  // Repaint the entire row (but never rows below), as these will be repainted by separate calls.
+} agon_ttxt_op_t;
+
 
 // The teletext video class
 //
@@ -62,7 +71,7 @@ class agon_ttxt {
     void setgrpbyte(int index, char dot, bool contig, bool inner);
     void display_char(int col, int row, unsigned char c);
     unsigned char translate_char(unsigned char c);
-    void process_line(int row, int col, bool redraw, bool do_flash);
+    void process_line(int row, int col, agon_ttxt_op_t op);
 };
 
 // Translated displayable character to index in font (128..255 represent block graphics).
@@ -109,18 +118,24 @@ void agon_ttxt::display_char(int col, int row, unsigned char c)
 // col -- process line up to column n.
 // redraw, redraw the characters.
 // do_flash. redraw only the characters that are flashing (redraw parameter must be false).
-void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
+void agon_ttxt::process_line(int row, int col, agon_ttxt_op_t op)
 {
   bool redrawNext = false;
+  int maxcol;
+  bool redraw = (op == AGON_TTXT_OP_REPAINT);
   unsigned char heldGraph;
+  if (op == AGON_TTXT_OP_SCAN) 
+    maxcol = col;
+  else
+    maxcol = 40;
   m_font.data = m_font_data_norm;
   if (m_dh_status[row] == 2) 
      m_stateFlags = TTXT_STATE_FLAG_DHLOW;
   else
      m_stateFlags = 0;
-  if (redraw && m_dh_status[row] == 1)
+  if ((op == AGON_TTXT_OP_UPDATE) && m_dh_status[row] == 1)
   {
-    // If we redraw the line, reconsider its double height status and that of the line below.
+    // If we update a control character in the line, reconsider its double height status and that of the line below.
     m_dh_status[row] = 0;
     if (row < 24) m_dh_status[row+1] = 0;        
   }
@@ -128,9 +143,10 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
   m_fg = colourLookup[COLOUR_WHITE];
   heldGraph = 0;
 
-  for (int i=0; i<col; i++)
+  for (int i=0; i<maxcol; i++)
   {
     unsigned char c = m_screen_buf[row*40+i];
+    if (op == AGON_TTXT_OP_UPDATE && i==col) redraw = true; // Start redrawing updated line.
     if (IS_CONTROL(c))
     {
       // These control codes already take effect in the same cell (for held graphics or for background colour)
@@ -138,7 +154,7 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
       { 
       case 0x09:
         m_stateFlags &= ~TTXT_STATE_FLAG_FLASH;        
-        if (do_flash) redraw = false;        
+        if (op == AGON_TTXT_OP_FLASH) redraw = false;        
         break;
       case 0x0c:
         m_stateFlags &= ~TTXT_STATE_FLAG_HEIGHT;
@@ -153,7 +169,7 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
           m_dh_status[row] = 1;
           if (row<24) {
             m_dh_status[row+1] = 2;
-            redrawNext = true;
+            if (op == AGON_TTXT_OP_UPDATE) redrawNext = true;
           }
           m_font.data = m_font_data_top;
         } else if (m_dh_status[row] == 1)
@@ -232,7 +248,7 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
         break;
       case 0x08:
         m_stateFlags |= TTXT_STATE_FLAG_FLASH;
-        if (do_flash) redraw = true;        
+        if (op==AGON_TTXT_OP_FLASH) redraw = true;        
         break;
       case 0x11: 
         m_fg = colourLookup[COLOUR_RED];
@@ -290,8 +306,8 @@ void agon_ttxt::process_line(int row, int col, bool redraw, bool do_flash)
       } 
     }
   }
-  if (redraw && redrawNext && !do_flash)
-     process_line(row+1, 40, true, false);
+  if (redrawNext)
+     process_line(row+1, 0, AGON_TTXT_OP_UPDATE);
 }
 
 // Set single byte in a font character representing a graphic.
@@ -501,15 +517,15 @@ void agon_ttxt::draw_char(int x, int y, unsigned char c)
   // Determine how much to render.
   if (IS_CONTROL(c) || IS_CONTROL(oldb) || (cx<39 && IS_CONTROL(m_screen_buf[cx+1+cy*40])))
   {
-     // If removing or adding control character, redraw entire line.
-     process_line(cy, 40, true, false); 
+     // If removing or adding control character, redraw line from column position.
+     process_line(cy, cx, AGON_TTXT_OP_UPDATE); 
      m_lastRow = -1;
      return;
   }
   else if (cx != m_lastCol+1 || cy != m_lastRow)
   {
       // If not continuing on same line after last drawn character, parse all control chars.
-      process_line(cy, cx, false, false); 
+      process_line(cy, cx, AGON_TTXT_OP_SCAN); 
       m_lastCol = cx;
       m_lastRow = cy;
       
@@ -534,7 +550,7 @@ void agon_ttxt::scroll()
      if (m_dh_status[0] == 2)
      {
         m_dh_status[0] = 1;
-        process_line(0, 40, true, false);
+        process_line(0, 0, AGON_TTXT_OP_UPDATE);
         m_lastRow = -1;
      }     
   }
@@ -548,7 +564,7 @@ void agon_ttxt::scroll()
     memset(m_dh_status+m_top, 0, m_bottom + 1 - m_top);
     for (int row = m_top; row <= m_bottom; row++)
     {    
-      process_line(row, 40, true, false);
+      process_line(row, 40, AGON_TTXT_OP_REPAINT);
     }    
   }
 }
@@ -573,7 +589,7 @@ void agon_ttxt::cls()
     memset(m_dh_status+m_top, 0, m_bottom + 1 - m_top);
     for (int row=m_top; row <= m_bottom; row++)
     {
-      this->process_line(row, 40, true, false);
+      this->process_line(row, 40, AGON_TTXT_OP_REPAINT);
     }
   }
 }
@@ -584,6 +600,7 @@ void agon_ttxt::flash(bool f)
   m_flashPhase = f;
   bool fUpdated = false;
   RGB888 oldbg = m_bg;
+  RGB888 oldfg = m_fg;
   for (int i = 0; i < 24; i++)
   {
     for (int j = 0; j < 40; j++)
@@ -591,7 +608,7 @@ void agon_ttxt::flash(bool f)
       if ((m_screen_buf[i*40+j] & 0x7f) == 0x08)
       {
         // Scan/redraw the line if there is any flash control code.
-        process_line(i, 40, false, true); 
+        process_line(i, 40, AGON_TTXT_OP_FLASH); 
         fUpdated = true;
         break; 
       }
@@ -600,8 +617,9 @@ void agon_ttxt::flash(bool f)
   if (fUpdated)
   {
     if (m_lastRow >= 0) 
-      process_line(m_lastRow, m_lastCol, false, false);
+      process_line(m_lastRow, m_lastCol, AGON_TTXT_OP_SCAN);
     m_Canvas->setBrushColor(oldbg);
+    m_Canvas->setPenColor(oldfg);
   }
 }
 
